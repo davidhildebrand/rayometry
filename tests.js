@@ -190,6 +190,16 @@ test('Random billiard target is reachable, outside the block and on the board',(
   const path=P.trace(s.source,P.direction(b.solution),s.block,s.outsideIndex,s);
   assert(!path.warning&&path.events.length>=1,'solution must pass through the block');
   const result=S.hitTest(path,b.hole);assert(result.hit);close(result.distance,0,1e-6);
+  const turn=Math.abs(Math.atan2(Math.sin(b.solution-s.source.angle),Math.cos(b.solution-s.source.angle)));
+  assert(turn<=S.TARGET_SPREAD+1e-9,`solution needs a ${turn*180/Math.PI}° turn for ${preset}`);
+ }
+});
+test('Targets stay within 20° of the current aim over many draws',()=>{
+ const random=lcg(11);
+ for(let i=0;i<40;i++){
+  const s=S.defaults();s.source.angle=rad(-180+9*i);assert(S.randomTarget(s,random));
+  const turn=Math.abs(Math.atan2(Math.sin(s.billiards.solution-s.source.angle),Math.cos(s.billiards.solution-s.source.angle)));
+  assert(turn<=rad(20)+1e-9);
  }
 });
 test('Random targets differ between draws and reset the attempt count',()=>{

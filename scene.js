@@ -187,11 +187,14 @@
     return true;
   }
   // Place the hole on the emerging leg of a random, valid path, so an exact solution always exists.
-  function randomTarget(s,random=Math.random){
+  // Solutions are sought within ±spread of the current aim first; the full circle is a last resort.
+  const TARGET_SPREAD=radians(20);
+  function randomTarget(s,random=Math.random,spread=TARGET_SPREAD){
     const b=s.billiards||(s.billiards=billiardsDefaults());let fallback=null;
     function accept(candidate){Object.assign(b,candidate,{shot:'idle',ball:null,plan:null,progress:null,pull:0,attempts:0,solved:false,moved:false});b.targets++;return true;}
-    for(let attempt=0;attempt<600;attempt++){
-      const angle=random()*2*Math.PI-Math.PI,path=aimedPath(s,angle);
+    for(let attempt=0;attempt<900;attempt++){
+      if(attempt===600&&fallback)return accept(fallback);
+      const angle=attempt<600?s.source.angle+(2*random()-1)*spread:random()*2*Math.PI-Math.PI,path=aimedPath(s,angle);
       if(path.warning||!path.events.length)continue;
       const last=path.segments[path.segments.length-1],d=P.sub(last.to,last.from),len=P.length(d);
       if(len<HOLE_RADIUS*4)continue;
@@ -241,6 +244,6 @@
     return null;
   }
   root.BenchScene={presets,applyPreset,deviation,minimumDeviation,defaults,rays,inBoard,blockFits,setCurveDepth,lockPivot,rotateSource,snapSourceAngle,placeAtSpecialAngle,
-    HOLE_RADIUS,BALL_SPEED,billiardsDefaults,billiardLegs,hitTest,holeFits,randomTarget,moveHole,findSolution,shotPlan,ballAt};
+    HOLE_RADIUS,BALL_SPEED,TARGET_SPREAD,billiardsDefaults,billiardLegs,hitTest,holeFits,randomTarget,moveHole,findSolution,shotPlan,ballAt};
   if(typeof module!=='undefined'&&module.exports) module.exports=root.BenchScene;
 })(typeof globalThis!=='undefined'?globalThis:this);
