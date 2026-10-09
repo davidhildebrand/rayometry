@@ -179,6 +179,59 @@ test('Ruler snapping selects physical points and can be disabled',()=>{
  s.ruler.snap=false;const free=M.snap({x:602,y:325},s,paths);close(free.x,602);
  const bounded=M.snap({x:-10,y:900},s,paths);close(bounded.x,0);close(bounded.y,650);
 });
+// Photon billiards: deterministic pseudo-random targets so the checks are repeatable.
+function lcg(seed){let x=seed>>>0;return()=>{x=(1664525*x+1013904223)>>>0;return x/4294967296;};}
+test('Random billiard target is reachable, outside the block and on the board',()=>{
+ for(const [preset,seed]of [[null,1],['prism45',2],['semicircle',3],['equilateral',4],['prism30',5]]){
+  const s=S.defaults();if(preset)S.applyPreset(s,preset);
+  assert(s.billiards.hole===null);assert(S.randomTarget(s,lcg(seed)),'no target for '+preset);
+  const b=s.billiards;assert(b.hole&&S.inBoard(b.hole,s,b.hole.r));assert(P.location(b.hole,s.block)==='outside');assert(S.holeFits(s,b.hole));
+  assert(P.length(P.sub(b.hole,s.source))>=180);assert(b.targets===1&&b.attempts===0&&b.shot==='idle');
+  const path=P.trace(s.source,P.direction(b.solution),s.block,s.outsideIndex,s);
+  assert(!path.warning&&path.events.length>=1,'solution must pass through the block');
+  const result=S.hitTest(path,b.hole);assert(result.hit);close(result.distance,0,1e-6);
+ }
+});
+test('Random targets differ between draws and reset the attempt count',()=>{
+ const s=S.defaults(),random=lcg(7);S.randomTarget(s,random);const first={...s.billiards.hole};s.billiards.attempts=3;
+ S.randomTarget(s,random);assert(P.length(P.sub(s.billiards.hole,first))>1);assert(s.billiards.attempts===0&&s.billiards.targets===2);
+});
+test('Hit test sinks only within the hole radius and reports the closest approach',()=>{
+ const path=P.trace({x:100,y:100},{x:1,y:0},b,1,bounds);assert(path.events.length===0);
+ const miss=S.hitTest(path,{x:600,y:140,r:20});assert(!miss.hit);close(miss.distance,40);close(miss.point.x,600);close(miss.point.y,100);
+ const hit=S.hitTest(path,{x:600,y:112,r:20});assert(hit.hit&&hit.segment===0);close(hit.distance,12);close(hit.point.x,600);
+ const beyond=S.hitTest(path,{x:1100,y:100,r:20});assert(!beyond.hit);close(beyond.distance,100);
+});
+test('Billiard legs carry the medium index and time the ball at v = c/n',()=>{
+ const s=S.defaults(),path=S.rays(s)[0],legs=S.billiardLegs(s,path);
+ assert(legs.length===3);assert(legs[0].index===1.5&&legs[1].index===1.5&&legs[2].index===1);
+ s.billiards.hole={x:30,y:30,r:20};const plan=S.shotPlan(s,path,400);assert(!plan.result.hit);
+ close(plan.total,legs.reduce((t,l)=>t+l.length*l.index/400,0));
+ close(plan.legs[1].duration/plan.legs[1].length,1.5*plan.legs[2].duration/plan.legs[2].length);
+ const mid=S.ballAt(plan,plan.legs[0].duration/2);assert(mid.leg===0);close(mid.fraction,.5);
+ const end=S.ballAt(plan,plan.total+1);assert(end.leg===2);close(end.fraction,1);close(P.length(P.sub(end.point,path.segments[2].to)),0);
+ const outside=S.defaults();outside.source={x:100,y:300,angle:0,count:1};const legs2=S.billiardLegs(outside,S.rays(outside)[0]);
+ assert(legs2.length===3&&legs2[0].index===1&&legs2[1].index===1.5&&legs2[2].index===1);
+});
+test('Shot plan stops the ball in the hole and a scan recovers a solution',()=>{
+ const s=S.defaults(),path=S.rays(s)[0],last=path.segments[2],center=P.add(last.from,P.mul(P.sub(last.to,last.from),.5));
+ s.billiards.hole={x:center.x,y:center.y,r:20};const plan=S.shotPlan(s,path);
+ assert(plan.result.hit&&plan.result.segment===2);assert(plan.legs.length===3);close(P.length(P.sub(plan.legs[2].to,center)),0);
+ assert(plan.total<S.shotPlan(s,{segments:path.segments,events:path.events},S.BALL_SPEED/2).total);
+ const solution=S.findSolution(s);assert(solution!==null);
+ assert(S.hitTest(P.trace(s.source,P.direction(solution),s.block,s.outsideIndex,s),s.billiards.hole).hit);
+ s.billiards.hole={x:980,y:640,r:1};assert(S.findSolution(s)===null);
+});
+test('Moving the hole keeps it on the board and off the block',()=>{
+ const s=S.defaults();S.randomTarget(s,lcg(9));const before={...s.billiards.hole};
+ assert(!S.moveHole(s,{x:500,y:325}));assert(!S.moveHole(s,{x:330,y:325}));close(s.billiards.hole.x,before.x);assert(!s.billiards.moved);
+ assert(S.moveHole(s,{x:900,y:80}));close(s.billiards.hole.x,900);close(s.billiards.hole.y,80);assert(s.billiards.moved&&s.billiards.solution===null);
+ assert(S.moveHole(s,{x:5000,y:-50}));assert(s.billiards.hole.x<=s.width-s.billiards.hole.r&&s.billiards.hole.y>=s.billiards.hole.r);
+});
+test('Presets clear the hole and defaults start without one',()=>{
+ const s=S.defaults();assert(s.billiards.hole===null&&s.billiards.attempts===0);S.randomTarget(s,lcg(2));assert(s.billiards.hole);
+ S.applyPreset(s,'semicircle');assert(s.billiards.hole===null&&s.billiards.solution===null);
+});
 if(typeof document!=='undefined'){
  const list=document.getElementById('results');results.forEach(r=>{const li=document.createElement('li');li.textContent=`${r.pass?'PASS':'FAIL'} · ${r.name}${r.error?' — '+r.error:''}`;li.style.color=r.pass?'#126c68':'#b33';list.appendChild(li);});document.getElementById('summary').textContent=`${results.filter(r=>r.pass).length} / ${results.length} checks passed`;
 }else{results.forEach(r=>console.log(`${r.pass?'PASS':'FAIL'} ${r.name}${r.error?' — '+r.error:''}`));if(results.some(r=>!r.pass))process.exitCode=1;}

@@ -31,6 +31,11 @@ svg .annotation{paint-order:stroke;stroke:#fcfdf9;stroke-width:5px;stroke-linejo
 svg .ray{stroke:#ce8734;stroke-width:2.5;fill:none;pointer-events:none}svg .normal{stroke:#688ba0;stroke-dasharray:5 5;stroke-width:1.5;pointer-events:none}
 svg .critical-ray{stroke:#8a481c;stroke-width:4}svg .critical-label{fill:#8a481c;font-weight:750}
 svg .deviation-reference{stroke:#80539a;stroke-width:1.8;stroke-dasharray:7 5}svg .deviation-arc{fill:none;stroke:#80539a;stroke-width:2}svg .deviation-label{fill:#70428a;font-weight:700}
+svg .cue{cursor:grab}svg .hole.movable{cursor:grab}svg .hole-label{fill:#5b6b63;font-size:11px;letter-spacing:1px}
+svg .miss-gap{stroke:#8a481c;stroke-width:1.5;stroke-dasharray:4 4;fill:none;pointer-events:none}svg .verdict{font-weight:750;font-size:15px}svg .verdict-hit{fill:#155e52}svg .verdict-miss{fill:#8a481c;font-size:12px}
+.billiards-actions{display:grid;grid-template-columns:1fr 1fr;gap:7px;margin-top:14px}.billiards-actions button{padding:10px 8px}
+#shoot{grid-column:1 / -1;background:var(--teal);color:#fff;border-color:var(--teal);font-weight:650}#shoot:hover{background:#0f5a57;border-color:#0f5a57}#shoot:disabled{background:var(--teal)}
+#billiards-score .reading{margin:6px 0}#billiards-section[hidden]{display:none}
 svg .curvature-handle{cursor:ew-resize}svg .internal-extension{stroke:#367da4;stroke-width:1.7;stroke-dasharray:8 6;fill:none;pointer-events:none}svg .ruler-drag{cursor:grab}svg .ruler-label{fill:#756035;font-size:13px}
 @media(max-width:950px){main{padding:18px;gap:14px;grid-template-columns:minmax(0,1fr) 245px}header{padding:20px}.tag{display:none}.bench-footer{display:block}.bench-footer span{display:block;margin-bottom:6px}}
 @media(max-width:700px){main{grid-template-columns:1fr}#board{min-height:0;max-height:none}aside{display:grid;grid-template-columns:1fr 1fr}aside section{border-right:1px solid var(--border)}header p{display:none}.toggles{gap:8px}footer span{display:none}}

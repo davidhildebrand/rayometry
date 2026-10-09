@@ -9,7 +9,8 @@ class Element {
  getScreenCTM(){return {inverse:()=>({})};}
 }
 const document={getElementById(id){if(!elements.has(id))elements.set(id,new Element(id));return elements.get(id);}};
-const ctx=vm.createContext({document,console,DOMPoint:class{constructor(x,y){this.x=x;this.y=y;}matrixTransform(){return this;}}});
+const frames=[];
+const ctx=vm.createContext({document,console,DOMPoint:class{constructor(x,y){this.x=x;this.y=y;}matrixTransform(){return this;}},requestAnimationFrame:cb=>{frames.push(cb);return frames.length;}});
 for(const name of ['physics.js','scene.js','measurements.js','app.js'])vm.runInContext(fs.readFileSync(root+name,'utf8'),ctx);
 const $=id=>document.getElementById(id),change=(id,value)=>{const el=$(id);el.value=String(value);el.valueAsNumber=Number(value);el.onchange({target:el});};
 let checks=0;function check(name,fn){fn();checks++;console.log('PASS '+name);}
@@ -178,6 +179,51 @@ check('Hide-all unchecks controls and each annotation can be restored independen
  $('normal').checked=true;$('normal').onchange({target:$('normal')});assert($('board').innerHTML.includes('class="normal"'));assert(!$('board').innerHTML.includes('i 50.0°'));assert.equal($('hide-all-angles').attrs['aria-pressed'],'false');
  $('normal').checked=false;$('normal').onchange({target:$('normal')});$('angles').checked=true;$('angles').onchange({target:$('angles')});assert(!$('board').innerHTML.includes('class="normal"'));assert($('board').innerHTML.includes('i 50.0°'));
  $('show-all-angles').onclick();assert($('normal').checked&&$('angles').checked);$('reset').onclick();
+});
+check('Billiards hides the path, shoots on cue release, reveals the result and leaves other modes unchanged',()=>{
+ $('reset').onclick();assert($('billiards-section').hidden);assert(!$('board').innerHTML.includes('data-item="hole"'));
+ $('billiards').onclick();
+ assert.equal($('billiards').attrs['aria-pressed'],'true');assert.equal($('edit').attrs['aria-pressed'],'false');
+ assert(!$('billiards-section').hidden);for(const id of ['source-panel','toolbox-section','properties-section','media-section','try-section'])assert($(id).hidden);
+ let html=$('board').innerHTML;assert(html.includes('data-item="hole"'));assert(html.includes('data-item="cue"'));assert(html.includes('class="ball"'));assert(!html.includes('data-item="source"'));
+ assert.equal((html.match(/class="ray"/g)||[]).length,2,'only the incident leg is drawn before the shot');
+ assert.equal((html.match(/class="normal"/g)||[]).length,1);assert(html.includes('i 50.0°'));assert(!html.includes('r 50.0°'));
+ assert(!$('readout').innerHTML.includes('Total internal reflection'));assert($('readout').innerHTML.includes('50.0°'));
+ assert($('billiards-status').textContent.includes('reachable'));assert.equal($('shoot').disabled,false);assert.equal($('retry').disabled,true);
+ assert($('speed-caption').textContent.includes('67 %'));
+ // Aim with the handle, then pull the cue back and release: pull distance is irrelevant.
+ $('board').handlers.pointerdown({target:{closest:s=>s==='[data-rotate]'?{dataset:{rotate:'source'}}:null},clientX:520,clientY:266,pointerId:11});
+ $('board').handlers.pointermove({clientX:520,clientY:250});$('board').handlers.pointerup();
+ assert(Math.abs($('aim').value-(-45))<.5,'handle drag re-aims the ball');
+ change('aim',-40);assert.equal($('aim').value,-40);assert($('readout').innerHTML.includes('50.0°'));
+ $('board').handlers.pointerdown({target:{closest:s=>s==='[data-item]'?{dataset:{item:'cue'}}:null},clientX:300,clientY:450,pointerId:12});
+ $('board').handlers.pointermove({clientX:260,clientY:484});assert($('billiards-status').textContent.includes('Release'));assert($('board').innerHTML.includes('data-item="cue"'));
+ $('board').handlers.pointerup();
+ assert($('billiards-status').textContent.includes('flight'));assert.equal($('shoot').disabled,true);assert.equal(frames.length,1);
+ let t=0;frames.shift()(0);frames.shift()(400);html=$('board').innerHTML;t=800;
+ assert(html.includes('class="ball"')&&!html.includes('data-item="cue"'),'ball in flight without the cue');
+ const ball=html.match(/<g class="ball"[^>]*><circle cx="([^"]+)" cy="([^"]+)"/);assert(Math.hypot(+ball[1]-420,+ball[2]-350)>50,'ball has left the source');
+ assert(($('board').innerHTML.match(/class="ray"/g)||[]).length>=2,'trail follows the ball');
+ while(frames.length){frames.shift()(t);t+=400;}
+ assert(/Sunk|Missed/.test($('billiards-status').textContent));html=$('board').innerHTML;
+ assert(($('board').innerHTML.match(/class="ray"/g)||[]).length>=4,'path revealed after the shot');assert(html.includes('r 50.0°'));
+ assert($('readout').innerHTML.includes('Total internal reflection'));assert($('billiards-score').innerHTML.includes('<strong>1</strong>'));
+ assert.equal($('retry').disabled,false);assert.equal($('shoot').disabled,true);
+ $('retry').onclick();assert.equal($('shoot').disabled,false);assert.equal((($('board').innerHTML.match(/class="ray"/g)||[]).length),2);assert($('billiards-score').innerHTML.includes('<strong>1</strong>'));
+ $('shoot').onclick();while(frames.length){frames.shift()(t);t+=400;}assert($('billiards-score').innerHTML.includes('<strong>2</strong>'));
+ assert(/<strong>[01] \/ 1<\/strong>/.test($('billiards-score').innerHTML),'a target is sunk at most once');
+ $('new-target').onclick();assert($('billiards-score').innerHTML.includes('<strong>0</strong>'));assert($('billiards-score').innerHTML.includes('/ 2'));
+ // Dragging the hole onto the block is refused; a valid drop rescans for a solution.
+ const hole=$('board').innerHTML.match(/<g data-item="hole"[^>]*><circle cx="([^"]+)" cy="([^"]+)"/),hx=+hole[1],hy=+hole[2];
+ $('board').handlers.pointerdown({target:{closest:s=>s==='[data-item]'?{dataset:{item:'hole'}}:null},clientX:hx,clientY:hy,pointerId:13});
+ $('board').handlers.pointermove({clientX:500,clientY:325});$('board').handlers.pointerup();
+ assert($('board').innerHTML.includes(`<g data-item="hole" class="hole movable"><circle cx="${hx}" cy="${hy}"`));
+ $('board').handlers.pointerdown({target:{closest:s=>s==='[data-item]'?{dataset:{item:'hole'}}:null},clientX:hx,clientY:hy,pointerId:14});
+ $('board').handlers.pointermove({clientX:hx+(hx>500?-40:40),clientY:hy});$('board').handlers.pointerup();
+ assert(!$('board').innerHTML.includes(`<circle cx="${hx}" cy="${hy}" r="30"`));assert(/solution|No aim/.test($('billiards-status').textContent));
+ $('inspect').onclick();assert($('billiards-section').hidden);assert(!$('inspect-help').hidden);assert($('board').innerHTML.includes('data-item="source"'));assert(!$('board').innerHTML.includes('data-item="hole"'));
+ $('billiards').onclick();assert($('board').innerHTML.includes('data-item="hole"'));$('edit').onclick();assert(!$('source-panel').hidden);assert(!$('board').innerHTML.includes('data-item="cue"'));
+ $('reset').onclick();assert.equal($('board').innerHTML,initial);assert($('billiards-section').hidden);
 });
 check('Separate controls target their own object regardless of bench selection',()=>{
  $('reset').onclick();$('select-block').onclick();

@@ -26,6 +26,7 @@
       s.source={...P.sub(entry,P.mul(P.direction(angle),220)),angle,count:s.source.count};
     }
     s.pivot=null;s.inspection=null;
+    if(s.billiards){s.billiards.hole=null;s.billiards.solution=null;}
     if(s.rotationMode==='surface')lockPivot(s);
     return true;
   }
@@ -40,7 +41,7 @@
     const [entry,exit]=path.events;
     return Math.abs(entry.incidence-exit.outgoingAngle)<1e-8&&Math.abs(entry.outgoingAngle-exit.incidence)<1e-8;
   }
-  function defaults(){return {width:1000,height:650,grid:true,extensions:false,protractor:{visible:false,x:250,y:220,angle:0,measurement:Math.PI/4},ruler:{visible:false,snap:true,a:{x:650,y:550},b:{x:850,y:550}},source:{x:420,y:350,angle:radians(-40),count:1},block:{x:500,y:325,width:360,height:240,angle:0,index:1.5},outsideIndex:1,selected:'source',mode:'edit',normal:true,angles:true,showDeviation:false,rotationMode:'source',showAllAngles:false,pivot:null,inspection:null};}
+  function defaults(){return {width:1000,height:650,grid:true,extensions:false,protractor:{visible:false,x:250,y:220,angle:0,measurement:Math.PI/4},ruler:{visible:false,snap:true,a:{x:650,y:550},b:{x:850,y:550}},source:{x:420,y:350,angle:radians(-40),count:1},block:{x:500,y:325,width:360,height:240,angle:0,index:1.5},outsideIndex:1,selected:'source',mode:'edit',normal:true,angles:true,showDeviation:false,rotationMode:'source',showAllAngles:false,pivot:null,inspection:null,billiards:billiardsDefaults()};}
   function rays(s){const offsets=s.source.count===1?[0]:s.source.count===3?[-18,0,18]:[-24,-12,0,12,24];return offsets.map(offset=>{
     const start=P.add(s.source,P.rotate({x:0,y:offset},s.source.angle));
     return P.trace(start,P.direction(s.source.angle),s.block,s.outsideIndex,s);
@@ -155,6 +156,91 @@
     s.source={...candidates[0].trial.source};s.pivot=s.rotationMode==='surface'?pivot:null;s.inspection=null;
     return {ok:true,message:minimum?'Placed at minimum deviation. Entry point preserved.':`Placed at the critical angle at surface ${index+1}. Entry point preserved.`};
   }
-  root.BenchScene={presets,applyPreset,deviation,minimumDeviation,defaults,rays,inBoard,blockFits,setCurveDepth,lockPivot,rotateSource,snapSourceAngle,placeAtSpecialAngle};
+  // --- Photon billiards: the middle ray becomes a photon ball aimed at a hole. ---
+  const HOLE_RADIUS=20,BALL_SPEED=400; // board units per second in a medium of n = 1
+  function billiardsDefaults(){return {hole:null,solution:null,attempts:0,sunk:0,targets:0,solved:false,shot:'idle',ball:null,plan:null,progress:null,pull:0,moved:false};}
+  function aimedPath(s,angle){return P.trace({x:s.source.x,y:s.source.y},P.direction(angle),s.block,s.outsideIndex,s);}
+  // Each straight leg of a path with the refractive index the photon travels through.
+  function billiardLegs(s,path){
+    let inside=P.location(s.source,s.block)==='inside';const legs=[];
+    path.segments.forEach((segment,i)=>{
+      legs.push({from:{...segment.from},to:{...segment.to},index:inside?s.block.index:s.outsideIndex,length:P.length(P.sub(segment.to,segment.from))});
+      const e=path.events[i];if(e&&!e.tir)inside=!inside;
+    });
+    return legs;
+  }
+  // The ball sinks on the first leg that passes within the hole radius; otherwise report the closest approach.
+  function hitTest(path,hole){
+    let best=null;
+    for(let i=0;i<path.segments.length;i++){
+      const {from,to}=path.segments[i],d=P.sub(to,from),len=P.length(d);if(len<1e-9)continue;
+      const u=P.mul(d,1/len),t=Math.max(0,Math.min(len,P.dot(P.sub(hole,from),u)));
+      const point=P.add(from,P.mul(u,t)),distance=P.length(P.sub(hole,point));
+      if(distance<=hole.r)return {hit:true,segment:i,point,distance};
+      if(!best||distance<best.distance)best={hit:false,segment:i,point,distance};
+    }
+    return best||{hit:false,segment:-1,point:null,distance:Infinity};
+  }
+  function holeFits(s,hole,margin=6){
+    if(!hole||!inBoard(hole,s,hole.r+10)||P.location(hole,s.block)!=='outside')return false;
+    for(let k=0;k<12;k++)if(P.location(P.add(hole,P.mul(P.direction(k*Math.PI/6),hole.r+margin)),s.block)!=='outside')return false;
+    return true;
+  }
+  // Place the hole on the emerging leg of a random, valid path, so an exact solution always exists.
+  function randomTarget(s,random=Math.random){
+    const b=s.billiards||(s.billiards=billiardsDefaults());let fallback=null;
+    function accept(candidate){Object.assign(b,candidate,{shot:'idle',ball:null,plan:null,progress:null,pull:0,attempts:0,solved:false,moved:false});b.targets++;return true;}
+    for(let attempt=0;attempt<600;attempt++){
+      const angle=random()*2*Math.PI-Math.PI,path=aimedPath(s,angle);
+      if(path.warning||!path.events.length)continue;
+      const last=path.segments[path.segments.length-1],d=P.sub(last.to,last.from),len=P.length(d);
+      if(len<HOLE_RADIUS*4)continue;
+      const t=len*(.35+.55*random()),hole={...P.add(last.from,P.mul(d,t/len)),r:HOLE_RADIUS};
+      if(t<HOLE_RADIUS*2||!holeFits(s,hole)||P.length(P.sub(hole,s.source))<180)continue;
+      const candidate={hole,solution:angle};
+      // Prefer holes that cannot be reached by a straight shot around the block.
+      const direct=P.intersect(s.source,P.unit(P.sub(hole,s.source)),s.block);
+      if(direct&&direct.t<P.length(P.sub(hole,s.source)))return accept(candidate);
+      fallback=fallback||candidate;
+    }
+    return fallback?accept(fallback):false;
+  }
+  function moveHole(s,point){
+    const b=s.billiards;if(!b||!b.hole)return false;
+    const r=b.hole.r,hole={...b.hole,x:Math.max(r+10,Math.min(s.width-r-10,point.x)),y:Math.max(r+10,Math.min(s.height-r-10,point.y))};
+    if(!holeFits(s,hole))return false;
+    b.hole=hole;b.moved=true;b.solution=null;return true;
+  }
+  // Scan aim angles for any path that sinks the ball; used after the hole or scene is changed by hand.
+  function findSolution(s,hole=s.billiards&&s.billiards.hole,steps=1440){
+    if(!hole)return null;let best=null;
+    for(let k=0;k<steps;k++){
+      const angle=-Math.PI+2*Math.PI*k/steps,path=aimedPath(s,angle);if(path.warning)continue;
+      const result=hitTest(path,hole);
+      if(result.hit&&(!best||result.distance<best.distance))best={angle,distance:result.distance};
+    }
+    return best?best.angle:null;
+  }
+  // Legs the ball actually travels, trimmed at the hole, with v = c/n timing.
+  function shotPlan(s,path,speed=BALL_SPEED){
+    const result=hitTest(path,s.billiards.hole),legs=billiardLegs(s,path).slice(0,result.hit?result.segment+1:undefined);
+    if(result.hit&&legs.length){const last=legs[legs.length-1];last.to={...result.point};last.length=P.length(P.sub(last.to,last.from));}
+    let elapsed=0;
+    legs.forEach(leg=>{leg.start=elapsed;leg.duration=leg.length*leg.index/speed;elapsed+=leg.duration;});
+    return {legs,result,total:elapsed};
+  }
+  function ballAt(plan,time){
+    const legs=plan.legs;if(!legs.length)return null;
+    for(let i=0;i<legs.length;i++){
+      const leg=legs[i],last=i===legs.length-1;
+      if(time<=leg.start+leg.duration||last){
+        const fraction=leg.duration>0?Math.max(0,Math.min(1,(time-leg.start)/leg.duration)):1;
+        return {point:P.add(leg.from,P.mul(P.sub(leg.to,leg.from),fraction)),leg:i,fraction};
+      }
+    }
+    return null;
+  }
+  root.BenchScene={presets,applyPreset,deviation,minimumDeviation,defaults,rays,inBoard,blockFits,setCurveDepth,lockPivot,rotateSource,snapSourceAngle,placeAtSpecialAngle,
+    HOLE_RADIUS,BALL_SPEED,billiardsDefaults,billiardLegs,hitTest,holeFits,randomTarget,moveHole,findSolution,shotPlan,ballAt};
   if(typeof module!=='undefined'&&module.exports) module.exports=root.BenchScene;
 })(typeof globalThis!=='undefined'?globalThis:this);

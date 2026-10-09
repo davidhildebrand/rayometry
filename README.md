@@ -29,10 +29,23 @@ Also available: **30°–60°–90°** and **equilateral** triangle presets. Cor
 
 The Risley prism, retinal/apparent image demonstrations, graphing, and saved configurations are not implemented yet.
 
+## Photon billiards
+
+Choose **🎱 Billiards** in the bench toolbar. The ray source becomes a billiard cue with a photon ball, and a dark hole labelled **target** appears somewhere on the bench. Everything you set up in Edit (block, prism or curved block, both refractive indices, source position, rotation mode) is kept; Billiards only changes how the middle ray is presented.
+
+- **Before the shot** only the incident leg is drawn: the ball, its path up to the first surface, that surface's normal and the incidence angle **i**. The refracted or reflected continuation is hidden, and the readout shows the incident angle and indices only.
+- **Aim** by dragging the incident ray or the white handle (rotation is always about the ball in this mode), or type a board angle in the **Aim** box.
+- **Shoot** by pulling the cue back and releasing it, or press **Shoot**. The pull distance is shown but ignored: a photon's speed is fixed by the medium, so only the direction matters.
+- The ball then travels the real traced path at **v = c/n**, visibly slower inside the block than outside, leaving its path behind it and revealing each surface's angles as it passes. It sinks when its center passes within the hole radius (20 board units, 6 mm); otherwise it leaves the bench and a dashed line shows the closest approach in millimeters. The full path, all angles, the readout and the **Deviation δ** arc (if enabled) are revealed either way.
+- **Retry** re-arms the same hole; re-aiming after a shot does the same automatically. **New target** places a new hole. Attempts are counted per target, and each target is counted as sunk once.
+- **New target** chooses a random aim that passes through the block and places the hole on the emerging leg, so a solution always exists and usually cannot be reached by a straight shot around the block. You can also drag the hole; it cannot overlap the block or leave the bench, and the status reports whether a sinking aim was found for its new position (scanning 0.25° steps).
+
+The Normals and Angles checkboxes apply to the revealed annotations. Ruler and protractor stay available. Reset returns to Edit and clears the game. `BenchScene` exposes the pure parts: `randomTarget`, `hitTest`, `billiardLegs`, `shotPlan`, `ballAt`, `moveHole`, `holeFits` and `findSolution`; `app.js` adds the cue gesture and the `requestAnimationFrame` loop.
+
 ## Small architecture
 
 - `physics.js`: pure vectors, polygon and exact semicircle boundary intersections, vector Snell law, and path tracing. Angles are radians, coordinates are board units with y downward. It exposes `Optics`; no DOM dependencies.
-- `scene.js`: shape presets, defaults, ray-bundle creation, deviation readouts, critical-angle snapping, and pivot constraints. It exposes `BenchScene`.
+- `scene.js`: shape presets, defaults, ray-bundle creation, deviation readouts, critical-angle snapping, pivot constraints, and the photon-billiards target, hit test and timing. It exposes `BenchScene`.
 - `measurements.js`: physical scale, ruler snapping, radius input conversion, and internal-ray extensions, separate from ray tracing.
 - `app.js`: SVG rendering and pointer/form interactions. `index.html` and `styles.css` provide the interface.
 
