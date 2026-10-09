@@ -185,7 +185,7 @@ check('Billiards hides the path, shoots on cue release, reveals the result and l
  $('billiards').onclick();
  assert.equal($('billiards').attrs['aria-pressed'],'true');assert.equal($('edit').attrs['aria-pressed'],'false');
  assert(!$('billiards-section').hidden);for(const id of ['source-panel','toolbox-section','properties-section','media-section','try-section'])assert($(id).hidden);
- let html=$('board').innerHTML;assert(html.includes('data-item="hole"'));assert(html.includes('data-item="cue"'));assert(html.includes('class="ball"'));assert(!html.includes('data-item="source"'));
+ let html=$('board').innerHTML;assert(html.includes('data-item="hole"'));assert(html.includes('data-item="cue"'));assert(html.includes('class="ball movable" data-item="ball"'));assert(!html.includes('data-item="source"'));
  assert.equal((html.match(/class="ray"/g)||[]).length,2,'only the incident leg is drawn before the shot');
  assert.equal((html.match(/class="normal"/g)||[]).length,1);assert(html.includes('i 50.0°'));assert(!html.includes('r 50.0°'));
  assert(!$('readout').innerHTML.includes('Total internal reflection'));assert($('readout').innerHTML.includes('50.0°'));
@@ -221,6 +221,15 @@ check('Billiards hides the path, shoots on cue release, reveals the result and l
  $('board').handlers.pointerdown({target:{closest:s=>s==='[data-item]'?{dataset:{item:'hole'}}:null},clientX:hx,clientY:hy,pointerId:14});
  $('board').handlers.pointermove({clientX:hx+(hx>500?-40:40),clientY:hy});$('board').handlers.pointerup();
  assert(!$('board').innerHTML.includes(`<circle cx="${hx}" cy="${hy}" r="30"`));assert(/solution|No aim/.test($('billiards-status').textContent));
+ // Dragging the ball moves the source without changing the aim; the first surface updates.
+ const aimBefore=$('aim').value;assert($('board').innerHTML.includes('data-item="ball"'));
+ $('board').handlers.pointerdown({target:{closest:s=>s==='[data-item]'?{dataset:{item:'ball'}}:null},clientX:420,clientY:350,pointerId:15});
+ $('board').handlers.pointermove({clientX:200,clientY:350});$('board').handlers.pointerup();
+ assert($('board').innerHTML.includes('<g class="ball movable" data-item="ball" opacity="1"><circle cx="200" cy="350"'));assert.equal($('aim').value,aimBefore);
+ assert($('readout').innerHTML.includes('1 → 1.5'));assert(/solution|No aim/.test($('billiards-status').textContent));
+ $('board').handlers.pointerdown({target:{closest:s=>s==='[data-item]'?{dataset:{item:'ball'}}:null},clientX:200,clientY:350,pointerId:16});
+ $('board').handlers.pointermove({clientX:-500,clientY:900});$('board').handlers.pointerup();
+ assert($('board').innerHTML.includes('<g class="ball movable" data-item="ball" opacity="1"><circle cx="30" cy="620"'),'ball stays on the bench');
  $('inspect').onclick();assert($('billiards-section').hidden);assert(!$('inspect-help').hidden);assert($('board').innerHTML.includes('data-item="source"'));assert(!$('board').innerHTML.includes('data-item="hole"'));
  $('billiards').onclick();assert($('board').innerHTML.includes('data-item="hole"'));$('edit').onclick();assert(!$('source-panel').hidden);assert(!$('board').innerHTML.includes('data-item="cue"'));
  $('reset').onclick();assert.equal($('board').innerHTML,initial);assert($('billiards-section').hidden);

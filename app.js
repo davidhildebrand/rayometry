@@ -120,18 +120,20 @@
     out+=`<text x="${h.x}" y="${h.y-h.r-10}" text-anchor="middle" class="annotation hole-label">target</text></g>`;
     return out;
   }
-  function ballDrawing(p,r=9,opacity=1){
-    return `<g class="ball" pointer-events="none" opacity="${opacity}">${circle(p,r+6,'fill="#ffd166" fill-opacity=".25"')}${circle(p,r,'fill="#fff1b8" stroke="#b8862b" stroke-width="2"')}${circle({x:p.x-r/3,y:p.y-r/3},r/3.5,'fill="#fff"')}</g>`;
+  // movable=true draws the ball at the source as a drag handle for repositioning it.
+  function ballDrawing(p,r=9,opacity=1,movable=false){
+    const open=movable?`<g class="ball movable" data-item="ball" opacity="${opacity}">${circle(p,20,'fill="transparent"')}`:`<g class="ball" pointer-events="none" opacity="${opacity}">`;
+    return `${open}${circle(p,r+6,'fill="#ffd166" fill-opacity=".25"')}${circle(p,r,'fill="#fff1b8" stroke="#b8862b" stroke-width="2"')}${circle({x:p.x-r/3,y:p.y-r/3},r/3.5,'fill="#fff"')}</g>`;
   }
   function cueDrawing(){
     const bb=state.billiards,src=state.source;let out='';
     if(bb.shot!=='animating'){
       const tip=14+(bb.pull||0),butt=tip+170;
-      out+=`<g transform="translate(${src.x} ${src.y}) rotate(${deg(src.angle)})" data-item="cue" class="cue"><line x1="${-tip}" y1="0" x2="${-butt}" y2="0" stroke="transparent" stroke-width="24"/><line x1="${-tip-8}" y1="0" x2="${-butt}" y2="0" stroke="#b68650" stroke-width="6" stroke-linecap="round" pointer-events="none"/><line x1="${-tip-75}" y1="0" x2="${-butt}" y2="0" stroke="#4a3220" stroke-width="9" stroke-linecap="round" pointer-events="none"/><line x1="${-tip}" y1="0" x2="${-tip-9}" y2="0" stroke="#dbe7ee" stroke-width="6" stroke-linecap="round" pointer-events="none"/></g>`;
+      out+=`<g transform="translate(${src.x} ${src.y}) rotate(${deg(src.angle)})" data-item="cue" class="cue"><line x1="${-tip-10}" y1="0" x2="${-butt}" y2="0" stroke="transparent" stroke-width="24"/><line x1="${-tip-8}" y1="0" x2="${-butt}" y2="0" stroke="#b68650" stroke-width="6" stroke-linecap="round" pointer-events="none"/><line x1="${-tip-75}" y1="0" x2="${-butt}" y2="0" stroke="#4a3220" stroke-width="9" stroke-linecap="round" pointer-events="none"/><line x1="${-tip}" y1="0" x2="${-tip-9}" y2="0" stroke="#dbe7ee" stroke-width="6" stroke-linecap="round" pointer-events="none"/></g>`;
     }
-    if(bb.shot==='idle'||!bb.ball)out+=ballDrawing(src);
-    else if(bb.shot==='hit'){out+=ballDrawing(src,9,.3);out+=ballDrawing(bb.hole,6);}
-    else if(bb.shot==='miss'){out+=ballDrawing(src,9,.3);out+=ballDrawing(bb.ball,9,.55);}
+    if(bb.shot==='idle'||!bb.ball)out+=ballDrawing(src,9,1,true);
+    else if(bb.shot==='hit'){out+=ballDrawing(src,9,.3,true);out+=ballDrawing(bb.hole,6);}
+    else if(bb.shot==='miss'){out+=ballDrawing(src,9,.3,true);out+=ballDrawing(bb.ball,9,.55);}
     else out+=ballDrawing(bb.ball);
     return out;
   }
@@ -142,8 +144,8 @@
     if(bb.shot==='hit')return `Sunk after ${bb.attempts} attempt${bb.attempts===1?'':'s'}! Press New target for another hole.`;
     if(bb.shot==='miss')return `Missed. The ball passed ${M.mm(bb.plan.result.distance).toFixed(1)} mm from the center of the hole. Re-aim and shoot again.`;
     if(drag&&drag.type==='cue')return 'Release to shoot. How far you pull does not matter, only the direction.';
-    const reach=bb.solution===null?'No aim was found that sinks this hole. Move it or press New target. ':bb.moved?'A solution exists for this hole position. ':'A reachable hole has been placed. ';
-    return reach+'Aim with the incident ray, the white handle or the Aim box, then pull the cue back and release.';
+    const reach=bb.solution===null?'No aim was found that sinks the hole from here. Move the ball or the hole, or press New target. ':bb.moved?'A solution exists for this ball and hole. ':'A reachable hole has been placed. ';
+    return reach+'Aim with the incident ray, the white handle or the Aim box, then pull the cue back and release. Drag the ball to move it.';
   }
   function render(){
     traces=S.rays(state);const b=state.block,src=state.source,edit=state.mode==='edit',billiards=state.mode==='billiards',bb=state.billiards,middle=middleRay(),curve=b.shape==='semicircle'?P.curvedGeometry(b):null;
@@ -289,11 +291,12 @@
     if(state.mode==='billiards'){
       const bb=state.billiards;if(bb.shot==='animating')return;
       const item=e.target.closest('[data-item]'),part=item?.dataset?.item,rotation=e.target.closest('[data-rotate]');
-      if(part!=='cue'&&part!=='hole'&&!rotation)return;
+      if(part!=='cue'&&part!=='hole'&&part!=='ball'&&!rotation)return;
       notice='';const pos=boardPoint(e);
       if(bb.shot!=='idle')retry(false);
       if(part==='cue'){drag={type:'cue',start:pos,id:e.pointerId};bb.pull=0;}
       else if(part==='hole')drag={type:'hole',start:pos,original:{...bb.hole}};
+      else if(part==='ball')drag={type:'ball',start:pos,original:{x:state.source.x,y:state.source.y}};
       else{
         if(Math.hypot(pos.x-state.source.x,pos.y-state.source.y)<1){drag=null;notice='Grab the ray a little farther from the ball to aim.';render();return;}
         drag={type:'aim',center:{x:state.source.x,y:state.source.y},pointerAngle:Math.atan2(pos.y-state.source.y,pos.x-state.source.x),rawAngle:state.source.angle};
@@ -320,6 +323,9 @@
       state.billiards.pull=Math.max(0,Math.min(70,-P.dot(P.sub(pos,drag.start),P.direction(state.source.angle))));
     }else if(drag.type==='hole'){
       S.moveHole(state,{x:drag.original.x+pos.x-drag.start.x,y:drag.original.y+pos.y-drag.start.y});
+    }else if(drag.type==='ball'){
+      state.source.x=Math.max(30,Math.min(970,drag.original.x+pos.x-drag.start.x));
+      state.source.y=Math.max(30,Math.min(620,drag.original.y+pos.y-drag.start.y));
     }else if(drag.type==='aim'){
       const q=drag.center;if(Math.hypot(pos.x-q.x,pos.y-q.y)<1)return;
       const pointerAngle=Math.atan2(pos.y-q.y,pos.x-q.x),delta=Math.atan2(Math.sin(pointerAngle-drag.pointerAngle),Math.cos(pointerAngle-drag.pointerAngle));
@@ -358,7 +364,7 @@
   function endDrag(e){
     const finished=drag;drag=null;if(!finished)return;
     if(finished.type==='cue'){state.billiards.pull=0;if(e&&e.type==='pointercancel')render();else shoot();}
-    else if(finished.type==='hole'){state.billiards.solution=S.findSolution(state);render();}
+    else if(finished.type==='hole'||finished.type==='ball'){const bb=state.billiards;bb.moved=true;bb.solution=S.findSolution(state);render();}
   }
   svg.addEventListener('pointerup',endDrag);svg.addEventListener('pointercancel',endDrag);svg.addEventListener('lostpointercapture',endDrag);
   // --- Photon billiards: shot animation at v = c/n per leg. ---
